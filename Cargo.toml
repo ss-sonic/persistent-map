@@ -2,10 +2,10 @@
 name = "persistent-map"
 version = "0.1.0"
 edition = "2021"
-authors = ["Shubham Singh <shubham@routerprotocol.com>"]
+authors = ["Shubham Singh <singhshubham009@gmail.com>"]
 description = "An easy-to-use, async, persistent key-value store for Rust, backed by SQLite and designed for extensibility with other storage backends."
 license = "MIT"
-repository = "https://github.com/routerprotocol/persistent-map"
+repository = "https://github.com/ss-sonic/persistent-map"
 readme = "README.md"
 keywords = ["persistent", "map", "key-value", "database", "storage"]
 categories = ["data-structures", "database-implementations", "filesystem"]
