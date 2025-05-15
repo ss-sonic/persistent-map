@@ -57,38 +57,130 @@ use thiserror::Error;
 ///
 /// Implementing a custom backend:
 ///
+/// The `StorageBackend` trait defines the interface for persistent storage backends.
+/// By implementing this trait, you can create custom storage solutions for the `PersistentMap`.
+///
+/// # Implementing a Custom Backend
+///
+/// To implement a custom backend, you need to:
+///
+/// 1. Create a struct to hold your backend-specific data
+/// 2. Implement the required methods: `load_all`, `save`, and `delete`
+/// 3. Optionally override the `flush` method if your backend buffers writes
+///
+/// # Example Implementation
+///
+/// Here's an example of a custom backend that stores data in a JSON file:
+///
 /// ```rust
 /// use persistent_map::{StorageBackend, PersistentError, Result};
 /// use std::collections::HashMap;
+/// use std::path::PathBuf;
+/// use std::fs;
 /// use serde::{Serialize, de::DeserializeOwned};
 /// use std::hash::Hash;
 ///
-/// struct MyCustomBackend {
-///     // Your backend-specific fields
+/// struct JsonFileBackend {
+///     path: PathBuf,
+/// }
+///
+/// impl JsonFileBackend {
+///     pub fn new(path: impl Into<PathBuf>) -> Self {
+///         Self { path: path.into() }
+///     }
+///
+///     // Helper method to ensure the file exists
+///     fn ensure_file_exists(&self) -> std::io::Result<()> {
+///         if !self.path.exists() {
+///             // Create parent directories if they don't exist
+///             if let Some(parent) = self.path.parent() {
+///                 if !parent.exists() {
+///                     fs::create_dir_all(parent)?;
+///                 }
+///             }
+///
+///             // Create the file with an empty JSON object
+///             fs::write(&self.path, "{}")?;
+///         }
+///         Ok(())
+///     }
 /// }
 ///
 /// #[async_trait::async_trait]
-/// impl<K, V> StorageBackend<K, V> for MyCustomBackend
+/// impl<K, V> StorageBackend<K, V> for JsonFileBackend
 /// where
-///     K: Eq + Hash + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
+///     K: Eq + Hash + Clone + Serialize + DeserializeOwned + Send + Sync + ToString + 'static,
 ///     V: Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
 /// {
 ///     async fn load_all(&self) -> Result<HashMap<K, V>, PersistentError> {
-///         // Implementation for loading all key-value pairs
-///         # Ok(HashMap::new())
+///         // Ensure the file exists
+///         self.ensure_file_exists()?;
+///
+///         // If the file is empty or contains just "{}", return an empty HashMap
+///         let content = fs::read_to_string(&self.path)?;
+///         if content.trim() == "{}" {
+///             return Ok(HashMap::new());
+///         }
+///
+///         // Parse the JSON file
+///         let map = serde_json::from_str(&content)
+///             .map_err(|e| PersistentError::Serde(e))?;
+///
+///         Ok(map)
 ///     }
 ///
 ///     async fn save(&self, key: K, value: V) -> Result<(), PersistentError> {
-///         // Implementation for saving a key-value pair
-///         # Ok(())
+///         // Ensure the file exists
+///         self.ensure_file_exists()?;
+///
+///         // Load existing data
+///         let mut map: HashMap<K, V> = self.load_all().await?;
+///
+///         // Update the map
+///         map.insert(key, value);
+///
+///         // Write back to the file
+///         let content = serde_json::to_string_pretty(&map)
+///             .map_err(|e| PersistentError::Serde(e))?;
+///
+///         fs::write(&self.path, content)?;
+///
+///         Ok(())
 ///     }
 ///
 ///     async fn delete(&self, key: &K) -> Result<(), PersistentError> {
-///         // Implementation for deleting a key-value pair
-///         # Ok(())
+///         // Ensure the file exists
+///         self.ensure_file_exists()?;
+///
+///         // Load existing data
+///         let mut map: HashMap<K, V> = self.load_all().await?;
+///
+///         // Remove the key
+///         map.remove(key);
+///
+///         // Write back to the file
+///         let content = serde_json::to_string_pretty(&map)
+///             .map_err(|e| PersistentError::Serde(e))?;
+///
+///         fs::write(&self.path, content)?;
+///
+///         Ok(())
+///     }
+///
+///     async fn flush(&self) -> Result<(), PersistentError> {
+///         // No buffering in this implementation, so nothing to flush
+///         Ok(())
 ///     }
 /// }
 /// ```
+///
+/// # Best Practices for Custom Backends
+///
+/// 1. **Error Handling**: Convert backend-specific errors to `PersistentError`
+/// 2. **Concurrency**: Ensure your backend is safe for concurrent access
+/// 3. **Performance**: Consider caching or batching operations for better performance
+/// 4. **Resilience**: Handle edge cases like missing files or corrupted data gracefully
+/// 5. **Testing**: Create tests that verify persistence across application restarts
 #[async_trait::async_trait]
 pub trait StorageBackend<K, V>
 where
@@ -99,24 +191,127 @@ where
     ///
     /// This method is called when initializing a `PersistentMap` to populate
     /// the in-memory map with existing data.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `PersistentError` if loading fails for any reason, such as:
+    /// - The storage location doesn't exist
+    /// - The data is corrupted or in an invalid format
+    /// - There are permission issues
+    ///
+    /// # Implementation Notes
+    ///
+    /// - This method should be idempotent and safe to call multiple times
+    /// - If the storage is empty or doesn't exist yet, return an empty `HashMap`
+    /// - Consider adding error recovery mechanisms for corrupted data
     async fn load_all(&self) -> Result<HashMap<K, V>, PersistentError>;
 
     /// Save a key-value pair to the storage backend.
     ///
     /// This method is called whenever a key-value pair is inserted into the map.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `PersistentError` if saving fails for any reason, such as:
+    /// - The storage location is not writable
+    /// - There are permission issues
+    /// - The backend has reached capacity
+    ///
+    /// # Implementation Notes
+    ///
+    /// - This method should be atomic if possible
+    /// - Consider batching or caching writes for better performance
+    /// - If your backend requires serialization, handle serialization errors appropriately
     async fn save(&self, key: K, value: V) -> Result<(), PersistentError>;
 
     /// Delete a key-value pair from the storage backend.
     ///
     /// This method is called whenever a key-value pair is removed from the map.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `PersistentError` if deletion fails for any reason, such as:
+    /// - The storage location is not writable
+    /// - There are permission issues
+    ///
+    /// # Implementation Notes
+    ///
+    /// - This method should be idempotent - deleting a non-existent key should not be an error
+    /// - Consider optimizing for the case where the key doesn't exist
     async fn delete(&self, key: &K) -> Result<(), PersistentError>;
 
     /// Flush any buffered writes to the storage backend.
     ///
-    /// This method is optional and has a default implementation that does nothing.
-    /// Backends that buffer writes should override this method to ensure data is persisted.
+    /// This method is called when the user explicitly requests to ensure all data is persisted.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `PersistentError` if flushing fails for any reason, such as:
+    /// - The storage location is not writable
+    /// - There are permission issues
+    ///
+    /// # Implementation Notes
+    ///
+    /// - This method is optional and has a default implementation that does nothing
+    /// - Backends that buffer writes should override this method to ensure data is persisted
+    /// - This method should be idempotent and safe to call multiple times
     async fn flush(&self) -> Result<(), PersistentError> {
         Ok(())
+    }
+
+    /// Check if a key exists in the storage backend.
+    ///
+    /// This is an optional method with a default implementation that loads all data
+    /// and checks if the key exists. Backend implementations can override this
+    /// for better performance if they can check for existence without loading all data.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `PersistentError` if the check fails for any reason.
+    ///
+    /// # Implementation Notes
+    ///
+    /// - The default implementation is inefficient for large datasets
+    /// - Override this method if your backend can check for existence more efficiently
+    async fn contains_key(&self, key: &K) -> Result<bool, PersistentError> {
+        let all = self.load_all().await?;
+        Ok(all.contains_key(key))
+    }
+
+    /// Get the number of key-value pairs in the storage backend.
+    ///
+    /// This is an optional method with a default implementation that loads all data
+    /// and counts the entries. Backend implementations can override this
+    /// for better performance if they can count entries without loading all data.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `PersistentError` if the count operation fails for any reason.
+    ///
+    /// # Implementation Notes
+    ///
+    /// - The default implementation is inefficient for large datasets
+    /// - Override this method if your backend can count entries more efficiently
+    async fn len(&self) -> Result<usize, PersistentError> {
+        let all = self.load_all().await?;
+        Ok(all.len())
+    }
+
+    /// Check if the storage backend is empty.
+    ///
+    /// This is an optional method with a default implementation that uses `len()`.
+    /// Backend implementations can override this for better performance.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `PersistentError` if the check fails for any reason.
+    ///
+    /// # Implementation Notes
+    ///
+    /// - The default implementation uses `len()`, which may be inefficient
+    /// - Override this method if your backend can check emptiness more efficiently
+    async fn is_empty(&self) -> Result<bool, PersistentError> {
+        Ok(self.len().await? == 0)
     }
 }
 
