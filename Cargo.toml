@@ -1,6 +1,6 @@
 [package]
 name = "persistent-map"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["Shubham Singh <singhshubham009@gmail.com>"]
 description = "An easy-to-use, async, persistent key-value store for Rust, backed by SQLite and designed for extensibility with other storage backends."
