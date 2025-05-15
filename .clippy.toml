@@ -1,0 +1,4 @@
+# Enable all clippy lints
+warn-on-all-wildcard-imports = true
+disallowed-methods = []
+disallowed-types = []

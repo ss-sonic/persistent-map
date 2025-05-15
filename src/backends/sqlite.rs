@@ -1,7 +1,7 @@
-//! SQLite backend implementation for PersistentMap.
+//! `SQLite` backend implementation for `PersistentMap`.
 //!
-//! This module provides a SQLite-based storage backend for PersistentMap.
-//! It uses tokio-rusqlite for asynchronous SQLite operations.
+//! This module provides a `SQLite`-based storage backend for `PersistentMap`.
+//! It uses `tokio-rusqlite` for asynchronous `SQLite` operations.
 
 use crate::StorageBackend;
 use crate::{PersistentError, Result};
@@ -9,9 +9,9 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, hash::Hash, str::FromStr};
 use tokio_rusqlite::{params, Connection};
 
-/// A SQLite-based storage backend for PersistentMap.
+/// A `SQLite`-based storage backend for `PersistentMap`.
 ///
-/// This backend stores key-value pairs in a SQLite database, providing
+/// This backend stores key-value pairs in a `SQLite` database, providing
 /// durable persistence with good performance characteristics.
 ///
 /// # Examples
@@ -31,19 +31,19 @@ use tokio_rusqlite::{params, Connection};
 /// ```
 #[derive(Debug)]
 pub struct SqliteBackend {
-    /// The SQLite connection
+    /// The `SQLite` connection
     conn: Connection,
 }
 
 impl SqliteBackend {
-    /// Creates a new SQLite backend with the given database path.
+    /// Creates a new `SQLite` backend with the given database path.
     ///
-    /// This method opens a connection to the SQLite database at the specified path
+    /// This method opens a connection to the `SQLite` database at the specified path
     /// and creates the necessary table if it doesn't exist.
     ///
     /// # Arguments
     ///
-    /// * `db_path` - The path to the SQLite database file
+    /// * `db_path` - The path to the `SQLite` database file
     ///
     /// # Returns
     ///
@@ -60,6 +60,10 @@ impl SqliteBackend {
     /// # Ok(())
     /// # }
     /// ```
+    /// # Errors
+    ///
+    /// Returns an error if the database connection cannot be opened or if
+    /// the initial table/index creation fails.
     pub async fn new(db_path: &str) -> Result<Self> {
         let conn = Connection::open(db_path).await?;
         conn.call(|c| {
@@ -81,11 +85,16 @@ impl SqliteBackend {
         Ok(Self { conn })
     }
 
-    /// Returns the path to the SQLite database file.
+    /// Returns the path to the `SQLite` database file.
     ///
     /// # Returns
     ///
     /// A `Result` containing the path to the database file or an error
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `PRAGMA database_list` query fails or if the path
+    /// cannot be retrieved from the query result.
     pub async fn db_path(&self) -> Result<String> {
         let result = self
             .conn
@@ -180,6 +189,11 @@ where
     /// Deletes a key-value pair from the SQLite database.
     ///
     /// This method removes the key-value pair with the specified key from the database.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if deleting from the backend fails.
+    #[inline]
     async fn delete(&self, key: &K) -> Result<(), PersistentError> {
         let key_str = key.to_string();
 

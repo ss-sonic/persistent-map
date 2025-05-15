@@ -1,4 +1,4 @@
-//! # PersistentMap
+//! # `PersistentMap`
 //!
 //! `persistent-map` provides an in-memory key-value store with async, pluggable persistence.
 //!
@@ -9,7 +9,7 @@
 //!
 //! - **Fast in-memory access**: Uses `DashMap` for concurrent read/write operations
 //! - **Async API**: Non-blocking I/O operations for persistence
-//! - **Multiple backends**: SQLite, CSV, in-memory, and extensible for more
+//! - **Multiple backends**: `SQLite`, `CSV`, in-memory, and extensible for more
 //! - **Type-safe**: Works with any types that implement the required traits
 //!
 //! ## Example
@@ -126,7 +126,7 @@ where
 /// the various storage backends.
 #[derive(Error, Debug)]
 pub enum PersistentError {
-    /// An error occurred in the SQLite backend.
+    /// An error occurred in the `SQLite` backend.
     #[cfg(feature = "sqlite")]
     #[error("sqlite error: {0}")]
     Sqlite(#[from] tokio_rusqlite::Error),
@@ -150,10 +150,20 @@ pub enum PersistentError {
     Sled(#[from] sled::Error),
 }
 
-/// Shorthand Result with error defaulting to PersistentError.
+/// Shorthand Result with error defaulting to `PersistentError`.
 pub type Result<T, E = PersistentError> = std::result::Result<T, E>;
+
+// Re-export backends
+#[cfg(feature = "csv_backend")]
+pub use crate::backends::csv;
+
+#[cfg(feature = "in_memory")]
+pub use crate::backends::in_memory;
+
+#[cfg(feature = "sqlite")]
+pub use crate::backends::sqlite;
+
 mod backends;
-pub use backends::*;
 
 /// A persistent key-value map with in-memory caching.
 ///
@@ -238,6 +248,10 @@ where
     /// # #[cfg(not(feature = "sqlite"))]
     /// # fn example() {}
     /// ```
+    /// # Errors
+    ///
+    /// Returns an error if loading from the backend fails.
+    #[inline]
     pub async fn new(backend: B) -> Result<Self> {
         let map = DashMap::new();
         let pm = Self { map, backend };
@@ -261,6 +275,10 @@ where
     /// # Ok(())
     /// # }
     /// ```
+    /// # Errors
+    ///
+    /// Returns an error if loading from the backend fails.
+    #[inline]
     pub async fn load(&self) -> Result<(), PersistentError> {
         let all = self.backend.load_all().await?;
         for (k, v) in all {
@@ -290,6 +308,10 @@ where
     /// # Ok(())
     /// # }
     /// ```
+    /// # Errors
+    ///
+    /// Returns an error if saving to the backend fails.
+    #[inline]
     pub async fn insert(&self, key: K, value: V) -> Result<Option<V>> {
         let old = self.map.insert(key.clone(), value.clone());
         self.backend.save(key, value).await?;
@@ -313,6 +335,7 @@ where
     /// }
     /// # }
     /// ```
+    #[inline]
     pub fn get(&self, key: &K) -> Option<V> {
         self.map.get(key).map(|r| r.value().clone())
     }
@@ -336,10 +359,17 @@ where
     /// # Ok(())
     /// # }
     /// ```
+    /// # Errors
+    ///
+    /// Returns an error if deleting from the backend fails.
+    #[inline]
     pub async fn remove(&self, key: &K) -> Result<Option<V>> {
         let old = self.map.remove(key).map(|(_, v)| v);
         if old.is_some() {
-            self.backend.delete(key).await?;
+            match self.backend.delete(key).await {
+                Ok(()) => {}
+                Err(e) => return Err(e),
+            }
         }
         Ok(old)
     }
@@ -356,6 +386,7 @@ where
     /// println!("Map contains {} entries", count);
     /// # }
     /// ```
+    #[inline]
     pub fn len(&self) -> usize {
         self.map.len()
     }
@@ -373,6 +404,7 @@ where
     /// }
     /// # }
     /// ```
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
@@ -390,6 +422,7 @@ where
     /// }
     /// # }
     /// ```
+    #[inline]
     pub fn contains_key(&self, key: &K) -> bool {
         self.map.contains_key(key)
     }
@@ -411,6 +444,7 @@ where
     /// assert_eq!(map.len(), 0);
     /// # }
     /// ```
+    #[inline]
     pub fn clear(&self) {
         self.map.clear();
     }
@@ -431,6 +465,10 @@ where
     /// # Ok(())
     /// # }
     /// ```
+    /// # Errors
+    ///
+    /// Returns an error if flushing the backend fails.
+    #[inline]
     pub async fn flush(&self) -> Result<(), PersistentError> {
         self.backend.flush().await
     }
@@ -451,7 +489,8 @@ where
     /// // Use backend-specific functionality
     /// # }
     /// ```
-    pub fn backend(&self) -> &B {
+    #[inline]
+    pub const fn backend(&self) -> &B {
         &self.backend
     }
 }

@@ -19,8 +19,9 @@ impl InMemoryBackend {
     ///
     /// let backend = InMemoryBackend::new();
     /// ```
-    pub fn new() -> Self {
-        InMemoryBackend
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
     }
 }
 
