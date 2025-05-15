@@ -1,0 +1,7 @@
+/target
+*.db
+*.csv
+*.db-journal
+*.db-lock
+*.db-trace
+*.db-wal

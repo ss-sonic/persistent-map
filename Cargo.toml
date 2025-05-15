@@ -1,0 +1,41 @@
+[package]
+name = "persistent-map"
+version = "0.1.0"
+edition = "2021"
+authors = ["Shubham Singh <shubham@routerprotocol.com>"]
+description = "An easy-to-use, async, persistent key-value store for Rust, backed by SQLite and designed for extensibility with other storage backends."
+license = "MIT"
+repository = "https://github.com/routerprotocol/persistent-map"
+readme = "README.md"
+keywords = ["persistent", "map", "key-value", "database", "storage"]
+categories = ["data-structures", "database-implementations", "filesystem"]
+rust-version = "1.65"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Core dependencies
+dashmap = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2.0.12"
+async-trait = "0.1"
+
+# Optional backend implementations
+tokio-rusqlite = { version = "0.6", optional = true }
+csv = { version = "1.3", optional = true }
+sled = { version = "0.34", optional = true }
+tokio = { version = "1.36", features = ["rt", "macros"], optional = true }
+
+[dev-dependencies]
+anyhow = "1.0.79"
+tokio = { version = "1.36", features = ["full", "test-util"] }
+tempfile = "3.8"
+
+[features]
+default = ["sqlite", "in_memory", "runtime"]
+sqlite = ["tokio-rusqlite"]
+csv_backend = ["csv"]
+sled_backend = ["sled"]
+in_memory = []
+runtime = ["tokio"]
